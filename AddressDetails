@@ -1,0 +1,573 @@
+import { Field, Select, SmallPrimaryButton, TextField } from "@esi/ui-components";
+import { isNumber } from "@okta/okta-auth-js";
+import React, { useState, useMemo, useEffect } from "react";
+import MapLocation from "../../../assets/svg/location-svg";
+import { Marker } from "../../../assets/svg/Marker";
+import ModalPopup from "../../../common/Modal/ModalPopup";
+import getLatLongForAddress from "../../../utils/AddressConverter";
+import { zipCodeChecking } from "../../../utils/CommonUtils";
+import { formatPhoneNumber, ValidateDateTime } from "../../../utils/GlobalSearch";
+import { useGoogleApiKey } from "../../../utils/GoogleApiKeyContext";
+import AddPatientMapView from "./AddPatientMapView";
+import styles from "./addressDetails.module.scss";
+
+const AddressDetails = React.forwardRef((props, ref) => {
+  const { isOpen, addressType, data, listOfStates, editAddress, nurseData, patientData, setFullAddressObj, setPhoneNumberObj, numberError, setNumberError, setFullAddressError } = props;
+  const [address1, setAddress1] = useState("");
+  const [address2, setAddress2] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zipCode, setZipCode] = useState("");
+  const [zipCodeExtension, setZipCodeExtension] = useState("");
+  const [homeNumber, setHomeNumber] = useState("");
+  const [cellPhone, setCellPhone] = useState("");
+  const [workPhone, setWorkPhone] = useState("");
+  const [extraNumber, setExtraNumber] = useState("");
+  const [address1Error, setAddress1Error] = useState("");
+  const [cityError, setCityError] = useState("");
+  const [stateError, setStateError] = useState("");
+  const [zipCodeError, setZipCodeError] = useState("");
+  const [addressList, setAddressList] = useState([{}]);
+  const [isMapview, setIsMapView] = useState(false);
+  const [coordinates, setCoordinates] = useState({});
+  const [selectedAddress, setSelectedAddress] = useState("");
+  const [addressArray, setAddressArray] = useState([]);
+  const apiKey = useGoogleApiKey();
+
+  const validateAddress1 = () => {
+    if (address1.length === 0 || address1 === "") {
+      setAddress1Error("Address Line1 is required");
+      return false;
+    } else {
+      setAddress1Error("");
+      return true;
+    }
+  };
+
+  const validateCity = () => {
+    if (city.length === 0 || city === "") {
+      setCityError("City is required");
+      return false;
+    } else {
+      setCityError("");
+      return true;
+    }
+  };
+
+  const validateState = () => {
+    if (state.length === 0 || state === "State" || state === "") {
+      setStateError("State is required");
+      return false;
+    } else {
+      setStateError("");
+      return true;
+    }
+  };
+  const validatePhoneNumber = () => {
+    if ((homeNumber === null || homeNumber === "") && (cellPhone === null || cellPhone === "") && (workPhone === null || workPhone === "")) {
+      setNumberError("PhoneNumber is Required");
+      return false;
+    }
+    else if ((Boolean(homeNumber) && homeNumber?.length < 12) || (Boolean(cellPhone) && cellPhone?.length < 12) || (Boolean(workPhone) && workPhone?.length < 12)) {
+      setNumberError("PhoneNumber must be 10 digits");
+      return false;
+    }
+    else {
+      setNumberError("");
+      return true;
+    }
+  }
+
+  const validateZipCode = () => {
+    if (zipCode.length === 0 || zipCode === "") {
+      setZipCodeError("Zip Code is required");
+      return false;
+    } else {
+      setZipCodeError("");
+      return true;
+    }
+  };
+
+  const onStateChange = (e) => {
+    const trimmedState = e.target.value.trimStart();
+    setState(trimmedState);
+  };
+  const handleAddress = async (address) => {
+    const data = await getLatLongForAddress(address, apiKey);
+    setCoordinates(data);
+  }
+
+  /** Adding Address to Select DropDown */
+  useEffect(() => {
+    if (data !== undefined) {
+      const arrayNew = [...data?.addressList?.filter(item => item?.addressType === "HOME[D]"),
+      ...data?.addressList?.filter(item => item?.addressType === "HOME"), ...data?.addressList?.filter(item => (item?.addressType !== "HOME[D]" && item?.addressType !== "HOME"))]
+      const patientAddress = arrayNew?.map((item, index) => {
+        return { value: `${item?.addressType} || ${item?.addr1}, ${item?.addr2 || ""}, ${item?.city},${item?.state},${zipCodeChecking(item?.zipCode?.replaceAll("_", ""))}`, key: (index) }
+      }) || [{}];
+      setAddressList([...patientAddress]);
+    }
+    if (editAddress?.length !== 0) {
+      setAddress1(editAddress?.[0]?.addressLine1);
+      setAddress2(editAddress?.[0]?.addressLine2);
+      setCity(editAddress?.[0]?.city);
+      setState(editAddress?.[0]?.state);
+      if (editAddress?.[0]?.zipCode?.replaceAll("_", "")?.length > 7) {
+        const zipArray = editAddress?.[0]?.zipCode?.split("-");
+        setZipCode(zipArray?.[0]);
+        setZipCodeExtension(zipArray?.[1]);
+      } else {
+        setZipCode(editAddress?.[0]?.zipCode);
+      }
+    }
+  }, [editAddress?.length, data, isOpen]);
+
+  const handleZipBlur = () => {
+    if (zipCode?.length >= 1 && zipCode?.length < 5) {
+      setZipCode(zipCode?.padEnd(5, 0));
+    }
+  }
+
+  /** Auto Populating phone numbers */
+  useEffect(() => {
+    if (data !== undefined && (Object.keys(data).length !== 0) && (!isOpen) && (editAddress?.length === 0)) {
+      setHomeNumber(formatPhoneNumber(data?.homePhone));
+      setExtraNumber(data?.workPhoneExt);
+      setWorkPhone(formatPhoneNumber(data?.workPhone));
+      setCellPhone(formatPhoneNumber(data?.cellPhone));
+    }
+  }, [data, isOpen]);
+
+  useEffect(() => {
+    if (address1Error?.length !== 0 || cityError?.length !== 0 || stateError?.length  !==0 || zipCodeError?.length !== 0 || numberError?.length !== 0) {
+      setFullAddressError(true);
+    } else {
+      setFullAddressError(false);
+    }
+  }, [address1Error, cityError, stateError, zipCodeError, address1, city, state, zipCode, addressType, cellPhone, workPhone, numberError, homeNumber]);
+
+  useEffect(() => {
+    if (addressList.length > 0) {
+      setSelectedAddress(addressList?.[0]?.value);
+    }
+  }, [addressList]);
+  /** Auto Populating Address Fields */
+  useEffect(() => {
+    /**if patient have more than one address. based on selection autopopulating address fields. */
+
+    if (addressList?.length > 1) {
+      if (editAddress?.length !== 0 && (selectedAddress?.length === 1)) {
+        const res = addressList?.[selectedAddress]?.value?.split("||")?.[1];
+        setAddress1(res?.split(",")?.[0]);
+        setAddress2(res?.split(",")?.[1]);
+        setCity(res?.split(",")?.[2]);
+        setState(res?.split(",")?.[3]);
+        const zipArray = res?.split(",")?.[4]?.split("-");
+        setZipCode(zipArray?.[0]);
+        if (zipArray?.length === 2) {
+          setZipCodeExtension(zipArray?.[1]);
+        }
+        else {
+          setZipCodeExtension("");
+        }
+      }
+      if (editAddress?.length === 0) {
+        const res = addressList?.[selectedAddress]?.value?.split("||")?.[1];
+        setAddress1(res?.split(",")?.[0]);
+        setAddress2(res?.split(",")?.[1]);
+        setCity(res?.split(",")?.[2]);
+        setState(res?.split(",")?.[3]);
+        const zipArray = res?.split(",")?.[4]?.split("-");
+        setZipCode(zipArray?.[0]);
+        if (zipArray?.length === 2) {
+          setZipCodeExtension(zipArray?.[1]);
+        }
+        else {
+          setZipCodeExtension("");
+        }
+      }
+      setStateError("");
+      setAddress1Error("");
+      setCityError("");
+      setZipCodeError("");
+    }
+    /** Default Auto Populate */
+    if (selectedAddress?.length > 1) {
+      if (editAddress?.length !== 0 && selectedAddress?.length === 1) {
+        const resSelect = selectedAddress?.split("||")?.[1];
+        setAddress1(resSelect?.split(",")?.[0]);
+        setAddress2(resSelect?.split(",")?.[1]);
+        setCity(resSelect?.split(",")?.[2]);
+        setState(resSelect?.split(",")?.[3]);
+        const zipCodeArray = resSelect?.split(",")?.[4]?.split("-");
+        setZipCode(zipCodeArray?.[0]);
+        if (zipCodeArray?.length === 2) {
+          setZipCodeExtension(zipCodeArray?.[1]);
+        }
+        else {
+          setZipCodeExtension("");
+        }
+      }
+      if (editAddress?.length === 0) {
+        const resSelect = selectedAddress?.split("||")?.[1];
+        setAddress1(resSelect?.split(",")?.[0]);
+        setAddress2(resSelect?.split(",")?.[1]);
+        setCity(resSelect?.split(",")?.[2]);
+        setState(resSelect?.split(",")?.[3]);
+        const zipCodeArray = resSelect?.split(",")?.[4]?.split("-")
+        setZipCode(zipCodeArray?.[0]);
+        if (zipCodeArray?.length === 2) {
+          setZipCodeExtension(zipCodeArray?.[1]);
+        }
+        else {
+          setZipCodeExtension("");
+        }
+      }
+      setStateError("");
+      setAddress1Error("");
+      setCityError("");
+      setZipCodeError("");
+    }
+  }, [selectedAddress, editAddress?.length]);
+
+  useMemo(() => {
+    let addressObj;
+    if (zipCodeExtension === "") {
+      addressObj = {
+        addressLine1: address1,
+        addressLine2: address2,
+        state: state,
+        zipCode: zipCode,
+        city: city,
+        appointmentDate: "",
+        appointmentDuration: ""
+      }
+    } else {
+      addressObj = {
+        addressLine1: address1,
+        addressLine2: address2,
+        state: state,
+        zipCode: `${zipCode}-${zipCodeExtension}`,
+        city: city,
+        appointmentDate: "",
+        appointmentDuration: ""
+      }
+    }
+    setAddressArray([addressObj]);
+  }, [address1, address2, city, state, zipCode, zipCodeExtension])
+
+  /** calculating latitude and longitude of slected Patient Address */
+  useEffect(() => {
+    let fullAddress;
+    if (address2?.length === 0) {
+      fullAddress = `${address1} ${city} ${state} ${zipCode}-${zipCodeExtension}`;
+    } else {
+      fullAddress = `${address1} ${address2} ${city} ${state} ${zipCode}-${zipCodeExtension}`;
+    }
+    if (address1?.length >= 2 && city?.length >= 2 && state?.length >= 2) {
+      handleAddress(fullAddress);
+    }
+  }, [address1, address2, city, state, zipCode]);
+
+  useMemo(() => {
+    if (homeNumber?.length === 12 || cellPhone?.length === 12 || workPhone?.length === 12) {
+      validatePhoneNumber();
+    }
+  }, [homeNumber, cellPhone, workPhone]);
+
+  const AddMapViewTitle = () => (
+    <span className={styles.addPatientIcon}>
+      <MapLocation /> &nbsp;&nbsp; Location
+    </span>
+  );
+  /** Edit Appointment Screen Address Fields are autoPopulated. */
+  const addressFields = (data) => {
+    setCellPhone(formatPhoneNumber(data?.[0]?.cellPhone));
+    setHomeNumber(formatPhoneNumber(data?.[0]?.homePhone));
+    setWorkPhone(formatPhoneNumber(data?.[0]?.workPhone));
+    setExtraNumber(data?.[0]?.workPhoneExt);
+  }
+  useEffect(() => {
+    if (editAddress?.length !== 0) {
+      addressFields(editAddress);
+    } else {
+      setCellPhone("");
+      setHomeNumber("");
+      setWorkPhone("");
+      setExtraNumber("");
+      setAddressList([]);
+      setAddress1("");
+      setAddress2("");
+      setCity("");
+      setState("Select");
+      setZipCode("");
+      setZipCodeExtension("");
+    }
+  }, [editAddress.length]);
+
+  const handleClick = () => {
+    setIsMapView(!isMapview);
+  }
+  const checkAddressValidations = () => {
+    const booleanCheckZip = validateZipCode();
+    const booleanCheckState = validateState();
+    const booleanCheckAddress1 = validateAddress1();
+    const booleanCheckCity = validateCity();
+    return (booleanCheckZip && booleanCheckCity && booleanCheckState && booleanCheckAddress1);
+  }
+  const phoneNumberValidations = () => {
+    let phoneCheck = validatePhoneNumber();
+    return phoneCheck
+  }
+  useMemo(() => {
+    if (zipCodeExtension === "") {
+      setFullAddressObj({
+        addressLine1: address1?.trim(),
+        addressLine2: address2?.trim(),
+        city: city?.trim(),
+        state: state,
+        zip: `${zipCode?.trim()}-____`,
+        latitude: coordinates?.lat || 0,
+        longitude: coordinates?.lng || 0
+      })
+    } else {
+      setFullAddressObj({
+        addressLine1: address1?.trim(),
+        addressLine2: address2?.trim(),
+        city: city?.trim(),
+        state: state,
+        zip: `${zipCode?.trim()}-${zipCodeExtension?.trim()}`,
+        latitude: coordinates?.lat || 0,
+        longitude: coordinates?.lng || 0
+      })
+    }
+  }, [address1, city, state, zipCode, coordinates, zipCodeExtension]);
+
+  useMemo(() => {
+    setPhoneNumberObj({
+      homePhone: homeNumber?.replaceAll("-", ""),
+      workPhone: cellPhone?.replaceAll("-", ""),
+      cellPhone: workPhone?.replaceAll("-", ""),
+      extension: extraNumber
+    })
+  }, [homeNumber, workPhone, cellPhone, extraNumber]);
+  useMemo(() => {if(address1Error?.length !== 0)validateAddress1()}, [address1]);
+  useMemo(() => {if(cityError?.length !== 0)validateCity()}, [city]);
+  useMemo(() => {if(stateError?.length !== 0)validateState()}, [state]);
+  useMemo(() => { if(zipCodeError?.length !== 0)validateZipCode()}, [zipCode]);
+  React.useImperativeHandle(ref, () => {
+    return {
+      checkAddressValidations,
+      phoneNumberValidations
+    }
+  }, [addressList, coordinates, data, address1, city, state, homeNumber, workPhone, cellPhone, zipCode]);
+
+  const classes = Boolean(selectedAddress) ? `${styles.viewPopupButton}` : `${styles.viewPopup}`;
+  const classes2 = (numberError.length) ? `${styles.textColor2}` : `${styles.textColor1}`;
+  return (
+    <div className={styles.AdditionalHolder}>
+      <div className={styles.save}>
+        <div className={styles.activeAddress}>
+          <label>Patient Active Address</label>
+          <Select
+            list={addressList}
+            className={styles.selectInputbase}
+            value={selectedAddress}
+            onChange={(e) => setSelectedAddress(e.target.value)}
+          />
+        </div>
+        <SmallPrimaryButton
+          isDisabled={!Boolean(selectedAddress)}
+          className={`${classes} ${styles.button}`}
+          onClick={handleClick}
+        >
+          <Marker />
+          <div>View</div>
+        </SmallPrimaryButton>
+        {isMapview && (
+          <ModalPopup
+            width={"50%"}
+            title={<AddMapViewTitle />}
+            onClose={() => {
+              setIsMapView(false);
+            }}
+          >
+            <div className={styles.modal}>
+              <AddPatientMapView
+                coordinates={coordinates}
+                locations={nurseData}
+                patient={patientData}
+                appointmentData={editAddress?.length !== 0 ? editAddress : addressArray}
+              />
+            </div>
+          </ModalPopup>
+        )}
+      </div>
+      <div className={styles.twoFieldsBlock}>
+        <div className={styles.addressField}>
+          <div><label>Address Line1</label><span className={styles.requiredMark}>*</span></div>
+          <TextField
+            required
+            placeholder=""
+            controlClassName={styles.width6}
+            className={styles.width}
+            type="text"
+            value={address1}
+            onChange={(e) => {
+              const trimmedAddress1 = e.target.value.trimStart();
+              setAddress1(trimmedAddress1);
+            }}
+            // onBlur={validateAddress1}
+            error={!!address1Error}
+            validationState={!!address1Error ? "error" : ""}
+            validationMessage={address1Error}
+            disabled={addressType === "home"}
+          />
+        </div>
+        <div className={styles.addressField}>
+          <label>Address Line2</label>
+          <TextField
+            placeholder=""
+            controlClassName={styles.width6}
+            className={styles.width}
+            value={address2}
+            onChange={(e) => setAddress2(e.target.value)}
+            type="text"
+            disabled={addressType === "home"}
+          />
+        </div>
+      </div>
+      <div className={styles.addressFieldsBlock2}>
+        <div className={styles.cityField}>
+          <div><label>City</label><span className={styles.requiredMark}>*</span></div>
+          <TextField
+            placeholder=""
+            controlClassName={styles.width3}
+            className={styles.width}
+            value={city}
+            onChange={(e) => {
+              const trimmedCity = e.target.value.trimStart();
+              const filteredValue = trimmedCity.replace(/[^a-zA-Z ]/g, "");
+              setCity(filteredValue);
+            }}
+            // onBlur={validateCity}
+            validationState={!!cityError ? "error" : ""}
+            validationMessage={cityError}
+            type="text"
+            disabled={addressType === "home"}
+          />
+        </div>
+        <div className={styles.stateField}>
+          <div><label>State</label><span className={styles.requiredMark}>*</span></div>
+          <Select
+            id="selectSingleExample"
+            list={listOfStates}
+            placeholder=""
+            onChange={onStateChange}
+            // onBlur={validateState}
+            validationState={!!stateError ? "error" : ""}
+            validationMessage={stateError}
+            value={state}
+            className={styles.selectInputbase}
+            disabled={addressType === "home"}
+          />
+          {/* <span className={styles.requiredMark}>*</span> */}
+        </div>
+        <div className={styles.cityField}>
+          <label>Zip Code</label>
+          <TextField
+            placeholder=""
+            controlClassName={styles.width3}
+            className={styles.width}
+            value={zipCode}
+            onChange={(e) => {
+              const trimmedZip = e.target.value.trimStart();
+              const filteredValue = trimmedZip.replace(/\D+/g, "");
+              setZipCode(filteredValue);
+            }}
+            onBlur={handleZipBlur}
+            validationState={!!zipCodeError ? "error" : ""}
+            validationMessage={zipCodeError}
+            maxlength={5}
+            disabled={addressType === "home"}
+          />
+        </div>
+        <div className={styles.cityField}>
+          <label>Ext.</label>
+          <Field
+            placeholder=""
+            controlClassName={styles.width3}
+            className={styles.width}
+            value={zipCodeExtension}
+            onChange={(e) =>
+              setZipCodeExtension(e.target.value.replace(/\D+/g, ""))
+            }
+            maxlength={4}
+            disabled={addressType === "home"}
+          />
+        </div>
+      </div>
+      <div>
+        <div className={styles.phoneDiv}>
+          <p className={`${styles.textsmall} ${classes2}`}>
+            Please enter at least one phone number
+          </p>
+          <span className={styles.requiredMark}>*</span>
+        </div>
+        <div className={`${styles.addressFieldsBlock2} ${styles.addressFieldsBlockPhone}`}>
+          <div className={styles.mobileField}>
+            <label>Home Number</label>
+            <TextField
+              placeholder=""
+              controlClassName={styles.width2}
+              value={homeNumber}
+              onChange={(e) => setHomeNumber(formatPhoneNumber(e.target.value))}
+              maxlength={12}
+            />
+          </div>
+          <div className={styles.mobileField}>
+            <label>Cell Number</label>
+            <TextField
+              placeholder=""
+              controlClassName={styles.width2}
+              value={cellPhone}
+              onChange={(e) =>
+                setCellPhone(formatPhoneNumber(e.target.value))
+              }
+              maxlength={12}
+            />
+          </div>
+          <div className={styles.mobileField}>
+            <label>Work Phone</label>
+            <TextField
+              placeholder=""
+              controlClassName={styles.width2}
+              value={workPhone}
+              onChange={(e) =>
+                setWorkPhone(formatPhoneNumber(e.target.value))
+              }
+              maxlength={12}
+            />
+          </div>
+          <div className={styles.mobileField}>
+            <label>Ext.</label>
+            <TextField
+              placeholder=""
+              controlClassName={styles.width2}
+              value={extraNumber}
+              onChange={(e) =>
+                setExtraNumber(e.target.value.replace(/\D+/g, "").slice(0, 10))
+              }
+              maxlength={10}
+            />
+          </div>
+        </div>
+        {(numberError.length !== 0) && <p className={`${styles.textsmall} ${styles.textColor2}`}>
+          {numberError}
+        </p>
+        }
+      </div>
+    </div>
+  );
+});
+export default AddressDetails;
